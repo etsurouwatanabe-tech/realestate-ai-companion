@@ -1,21 +1,36 @@
-"""inheritance-hotspots: 東京23区の相続予備軍スコア・タイプ判定
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["python-dotenv>=1.0"]
+# ///
+"""inheritance-hotspots: 相続予備軍スコア＋タイプ判定（全国対応 v1.1.0）
 
-CSVを読み込み、ユーザー指定の区について順位・スコア・タイプを返す。
+prepare.py で生成した aggregated.csv を読み込み、ユーザー指定の市区町村について
+順位・スコア・タイプ・追加候補を返す。
+
+実行例：
+  python score.py --wards "世田谷区,大田区,目黒区"
+  python score.py --wards "横浜市港北区,川崎市麻生区"
+  python score.py --wards "東京:中央区,大阪府:中央区"   # 同名解決時
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import re
 import sys
 from pathlib import Path
 from typing import Any
 
-CSV_PATH = Path(__file__).resolve().parent.parent / "data" / "tokyo23_aggregated.csv"
+CSV_PATH = Path(__file__).resolve().parent.parent / "data" / "aggregated.csv"
 
+
+# ─────────────────────────────────────────────────────────
+# データ読込
+# ─────────────────────────────────────────────────────────
 
 def load_rows() -> list[dict[str, Any]]:
-    """CSV を読み込み、スコア降順でソートした list を返す。CSV未生成時は prepare.py 実行を促す。"""
     if not CSV_PATH.exists():
         print(
             f"❌ {CSV_PATH.name} が見つかりません。\n"
@@ -23,12 +38,14 @@ def load_rows() -> list[dict[str, Any]]:
             "初回はデータ準備が必要です：\n"
             "  1. e-Stat APIキーを取得：https://www.e-stat.go.jp/api/\n"
             "  2. 環境変数を設定：export ESTAT_APP_ID=取得したID\n"
-            "  3. 準備スクリプト実行：python prepare.py\n"
+            "  3. 準備スクリプト実行：uv run prepare.py --prefecture 13\n"
+            "     （複数指定可：--prefecture 13,14,12 / --prefecture all）\n"
             "\n"
             "使い方がわからなければ DM までどうぞ：X / note @etsuro_watanabe\n",
             file=sys.stderr,
         )
         raise SystemExit(1)
+
     rows: list[dict[str, Any]] = []
     with CSV_PATH.open(encoding="utf-8") as f:
         for r in csv.DictReader(f):
@@ -40,14 +57,71 @@ def load_rows() -> list[dict[str, Any]]:
             r["land_median_yen_sqm"] = int(r["land_median_yen_sqm"])
             r["score_100oku"] = float(r["score_100oku"])
             rows.append(r)
+
     rows.sort(key=lambda x: -x["score_100oku"])
     for i, r in enumerate(rows, 1):
         r["rank"] = i
     return rows
 
 
+# ─────────────────────────────────────────────────────────
+# 市区町村検索
+# ─────────────────────────────────────────────────────────
+
+def normalize(name: str) -> str:
+    return name.strip()
+
+
+def parse_ward_query(q: str) -> tuple[str | None, str]:
+    """『東京:中央区』『東京都:中央区』のように都道府県付き指定を分離。
+    戻り値：(都道府県名 or None, 市区町村クエリ)
+    """
+    if ":" in q:
+        pref, name = q.split(":", 1)
+        pref = pref.strip().replace("都", "").replace("府", "").replace("県", "").replace("道", "")
+        return pref, name.strip()
+    return None, q.strip()
+
+
+_LAST_UNIT_RE = re.compile(r"[^市区町村]+[市区町村]$")
+
+
+def extract_last_unit(name: str) -> str:
+    """末尾の最小行政単位を抽出。
+    『横浜市港北区』→『港北区』、『川崎市麻生区』→『麻生区』、『世田谷区』→『世田谷区』。
+    マッチしなければそのまま返す。
+    """
+    m = _LAST_UNIT_RE.search(name)
+    return m.group(0) if m else name
+
+
+def find(rows: list[dict[str, Any]], pref: str | None, name: str) -> list[dict[str, Any]]:
+    """市区町村検索。pref 指定で都道府県絞り込み。
+
+    e-Stat メタ情報は政令市親（『横浜市』『川崎市』等）も含むが、その下の区も
+    別エントリで持つ（『港北区』『麻生区』）。ユーザーが『横浜市港北区』と入力した
+    場合は末尾単位『港北区』に落として検索する。
+    """
+    pool = rows if not pref else [r for r in rows if r["prefecture"] == pref]
+    # 1. 完全一致（入力そのまま）
+    exact = [r for r in pool if r["municipality"] == name]
+    if exact:
+        return exact
+    # 2. 末尾単位で完全一致（『横浜市港北区』→『港北区』）
+    last = extract_last_unit(name)
+    if last != name:
+        exact_last = [r for r in pool if r["municipality"] == last]
+        if exact_last:
+            return exact_last
+    # 3. 部分一致（最後の保険、『世田谷』→『世田谷区』）
+    return [r for r in pool if name in r["municipality"]]
+
+
+# ─────────────────────────────────────────────────────────
+# タイプ判定
+# ─────────────────────────────────────────────────────────
+
 def classify_type(r: dict[str, Any]) -> str:
-    """5タイプ分類のロジック。判定優先度：沈む→単価→ボリューム→鉱脈→バランス→賃貸シフト。"""
     own_hh = r["elderly_owner_hh"]
     own_rate = r["elderly_owner_rate"]
     aging_rate = r["aging_rate"]
@@ -66,25 +140,18 @@ def classify_type(r: dict[str, Any]) -> str:
     return "賃貸シフト型"
 
 
-def find_by_name(rows: list[dict[str, Any]], name: str) -> dict[str, Any] | None:
-    """『世田谷』『世田谷区』のどちらでもヒットさせる。"""
-    norm = name.replace("区", "").strip()
-    for r in rows:
-        if r["ward"] == norm:
-            return r
-    return None
-
-
 def neighbors_of_type(
     rows: list[dict[str, Any]],
     target_type: str,
-    exclude: set[str],
-    limit: int = 2,
+    exclude_codes: set[str],
+    pref_filter: set[str] | None = None,
+    limit: int = 3,
 ) -> list[dict[str, Any]]:
-    """同タイプの上位区を返す（指定区を除外）。"""
     out = []
     for r in rows:
-        if r["ward"] in exclude:
+        if r["code"] in exclude_codes:
+            continue
+        if pref_filter and r["prefecture"] not in pref_filter:
             continue
         if classify_type(r) == target_type:
             out.append(r)
@@ -93,51 +160,79 @@ def neighbors_of_type(
     return out
 
 
+# ─────────────────────────────────────────────────────────
+# レポート
+# ─────────────────────────────────────────────────────────
+
 def fmt_yen(yen_sqm: int) -> str:
-    """円/㎡ を 万円表記に。"""
     return f"{yen_sqm/10000:.0f}万円/㎡"
+
+
+def format_one(r: dict[str, Any], total: int) -> str:
+    t = classify_type(r)
+    return (
+        f"[ {r['prefecture']} {r['municipality']} ]\n"
+        f"  順位: {r['rank']}位 / 集計対象 {total}市区町村中\n"
+        f"  スコア: {r['score_100oku']:.0f}（高齢持ち家 {r['elderly_owner_hh']:,}世帯 × 中央値地価 {fmt_yen(r['land_median_yen_sqm'])}）\n"
+        f"  タイプ: {t}\n"
+        f"  高齢化率: {r['aging_rate']:.1f}% / 持ち家率: {r['elderly_owner_rate']:.1f}%"
+    )
+
+
+def format_ambiguous(name: str, candidates: list[dict[str, Any]]) -> str:
+    lines = [f"⚠ 『{name}』は {len(candidates)}件の候補があります。都道府県を指定してください："]
+    for c in candidates[:8]:
+        lines.append(f"  - {c['prefecture']}:{c['municipality']}")
+    if len(candidates) > 8:
+        lines.append(f"  ... 他 {len(candidates)-8}件")
+    lines.append(f"  例: --wards \"{candidates[0]['prefecture']}:{name}\"")
+    return "\n".join(lines)
 
 
 def report(wards: list[str]) -> str:
     rows = load_rows()
+    total = len(rows)
     lines: list[str] = []
     selected: list[dict[str, Any]] = []
     types_used: set[str] = set()
+    prefs_used: set[str] = set()
 
-    for w in wards:
-        r = find_by_name(rows, w)
-        if r is None:
-            lines.append(f"[ {w} ] ❌ 23区に該当なし（v1.0.0は東京23区のみ対応）")
+    for ward in wards:
+        pref, name = parse_ward_query(ward)
+        found = find(rows, pref, name)
+        if not found:
+            lines.append(f"[ {ward} ] ❌ 該当なし。prepare.py で対象都道府県を含めてください")
             continue
-        t = classify_type(r)
-        types_used.add(t)
+        if len(found) > 1:
+            lines.append(format_ambiguous(name, found))
+            continue
+        r = found[0]
         selected.append(r)
-        lines.append(
-            f"[ {r['ward']}区 ]\n"
-            f"  順位: {r['rank']}位 / 23区中\n"
-            f"  スコア: {r['score_100oku']:.0f}（高齢持ち家 {r['elderly_owner_hh']:,}世帯 × 中央値地価 {fmt_yen(r['land_median_yen_sqm'])}）\n"
-            f"  タイプ: {t}\n"
-            f"  高齢化率: {r['aging_rate']:.1f}% / 持ち家率: {r['elderly_owner_rate']:.1f}%"
-        )
+        types_used.add(classify_type(r))
+        prefs_used.add(r["prefecture"])
+        lines.append(format_one(r, total))
 
     if selected:
         avg_score = sum(r["score_100oku"] for r in selected) / len(selected)
-        rank_group = next((str(rows[i]["rank"]) for i in range(len(rows)) if rows[i]["score_100oku"] <= avg_score), "23")
+        rank_group = next(
+            (str(rows[i]["rank"]) for i in range(len(rows)) if rows[i]["score_100oku"] <= avg_score),
+            str(total),
+        )
         lines.append("")
-        lines.append(f"主力{len(selected)}区の平均スコア: {avg_score:.0f} → 23区中 {rank_group}位群")
+        lines.append(f"主力{len(selected)}市区町村の平均スコア: {avg_score:.0f} → 集計対象中 {rank_group}位群")
         if len(types_used) > 1:
             lines.append(f"タイプ偏在: {' + '.join(sorted(types_used))} → 複数戦略の併走推奨")
         else:
             t = next(iter(types_used))
             lines.append(f"タイプ統一: {t} → 同型エリア展開で深耕余地あり")
 
-        # 同タイプの追加候補
-        exclude = {r["ward"] for r in selected}
+        # 同タイプの追加候補（同じ都道府県内優先）
+        exclude = {r["code"] for r in selected}
         suggestions: list[str] = []
-        for t in types_used:
-            cand = neighbors_of_type(rows, t, exclude, limit=2)
+        for t in sorted(types_used):
+            cand = neighbors_of_type(rows, t, exclude, pref_filter=prefs_used, limit=2)
             for c in cand:
-                suggestions.append(f"{c['ward']}区（{t}・{c['rank']}位）")
+                suggestions.append(f"{c['prefecture']}{c['municipality']}（{t}・{c['rank']}位）")
         if suggestions:
             lines.append(f"追加候補: {' / '.join(suggestions[:3])}")
 
@@ -150,12 +245,13 @@ def report(wards: list[str]) -> str:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="東京23区 相続予備軍スコア")
-    p.add_argument("--wards", required=True, help="区名カンマ区切り（例: 世田谷,大田,目黒）")
+    p = argparse.ArgumentParser(description="相続予備軍スコア（全国対応）")
+    p.add_argument("--wards", required=True,
+                   help="市区町村名カンマ区切り。例: 世田谷区,大田区 / 横浜市港北区 / 東京:中央区,大阪府:中央区")
     args = p.parse_args()
-    wards = [w.strip() for w in args.wards.split(",") if w.strip()]
+    wards = [w for w in (s.strip() for s in args.wards.split(",")) if w]
     if not wards:
-        print("区名を指定してください（例: --wards 世田谷,大田,目黒）", file=sys.stderr)
+        print("市区町村名を指定してください", file=sys.stderr)
         return 1
     print(report(wards))
     return 0
