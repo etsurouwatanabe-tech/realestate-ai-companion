@@ -141,6 +141,11 @@ def report(wards: list[str]) -> str:
         if suggestions:
             lines.append(f"追加候補: {' / '.join(suggestions[:3])}")
 
+    lines.append("")
+    lines.append("─────")
+    lines.append("この結果について個別相談したい方は DM までどうぞ：")
+    lines.append("  X / note: @etsuro_watanabe")
+
     return "\n".join(lines)
 
 
