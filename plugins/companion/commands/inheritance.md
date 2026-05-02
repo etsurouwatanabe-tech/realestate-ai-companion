@@ -24,7 +24,9 @@ allowed-tools: ["Bash", "Read"]
 ### 2. データ準備状態の確認
 
 ```bash
-SKILL_DIR=$(claude plugin path companion 2>/dev/null || echo ~/.claude/plugins/cache/realestate-ai-companion/companion/*/skills/inheritance-hotspots)
+COMPANION_DIR=~/.claude/plugins/cache/realestate-ai-companion/companion
+LATEST=$(ls "$COMPANION_DIR" 2>/dev/null | sort -V | tail -1)
+SKILL_DIR="$COMPANION_DIR/$LATEST/skills/inheritance-hotspots"
 test -f "$SKILL_DIR/data/aggregated.csv" || echo "MISSING"
 ```
 
@@ -36,8 +38,7 @@ test -f "$SKILL_DIR/data/aggregated.csv" || echo "MISSING"
 ### 3. score.py を実行
 
 ```bash
-cd "$SKILL_DIR"
-uv run scripts/score.py --wards "{ユーザー指定値}"
+cd "$SKILL_DIR" && uv run scripts/score.py --wards "{ユーザー指定値}"
 ```
 
 ### 4. 結果の整形・追加示唆

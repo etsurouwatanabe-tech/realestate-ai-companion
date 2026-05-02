@@ -1,6 +1,6 @@
 [project]
 name = "realestate-ai-companion"
-version = "1.1.0"
+version = "1.1.1"
 description = "不動産業のAI伴走者 — 公開API×Claudeで物件分析・業務再設計"
 readme = "README.md"
 license = "MIT"

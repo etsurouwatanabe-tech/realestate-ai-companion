@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.1.1 — 2026-05-03
+
+### 🐛 マルチバージョン共存時の不具合修正
+
+- **slash command の SKILL_DIR 取得を「最新版を自動選択」に変更**
+  - 旧：`companion/*/skills/...` のワイルドカード展開（複数版あると古い方が選ばれる）
+  - 新：`ls $COMPANION_DIR | sort -V | tail -1` で最新版を確実に選ぶ
+- 古い cache のクリーンアップ手順を `/companion:prepare` に追加
+- N03 ハンズオン記事に「アップデート後に古いエラーが出る」「正しい update コマンド」のQ&A追加
+
+### 背景
+- v1.0.x → v1.1.0 アップデート後、`~/.claude/plugins/cache/.../companion/` に
+  両バージョンが並んで残り、ワイルドカード展開で v1.0.2 の prepare.py が走るケースが発生
+- `--prefecture` 未対応版の prepare.py がエラーで停止する事象を実機で確認 → 修正
+
+---
+
 ## v1.1.0 — 2026-05-03
 
 ### 🌏 全国対応＋slash command 化

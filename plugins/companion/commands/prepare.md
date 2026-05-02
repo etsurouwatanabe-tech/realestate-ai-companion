@@ -40,9 +40,18 @@ echo "${ESTAT_APP_ID:0:8}..." 2>/dev/null || echo "未設定"
 skill のディレクトリに移動して `uv run` で実行：
 
 ```bash
-SKILL_DIR=$(claude plugin path companion 2>/dev/null || echo ~/.claude/plugins/cache/realestate-ai-companion/companion/*/skills/inheritance-hotspots)
-cd "$SKILL_DIR"
-uv run scripts/prepare.py --prefecture "{ユーザー指定値}"
+COMPANION_DIR=~/.claude/plugins/cache/realestate-ai-companion/companion
+LATEST=$(ls "$COMPANION_DIR" 2>/dev/null | sort -V | tail -1)
+SKILL_DIR="$COMPANION_DIR/$LATEST/skills/inheritance-hotspots"
+cd "$SKILL_DIR" && uv run scripts/prepare.py --prefecture "{ユーザー指定値}"
+```
+
+**注意**：複数バージョンが並んでいる場合は最新版を自動選択する。古いバージョンが残っていると CSV フォーマットが揃わないので、必要に応じてクリーンアップを案内する：
+
+```bash
+# 旧バージョンと旧フォーマットCSVを削除
+ls "$COMPANION_DIR" | sort -V | head -n -1 | xargs -I{} rm -rf "$COMPANION_DIR/{}"
+rm -f "$SKILL_DIR/data/tokyo23_aggregated.csv"
 ```
 
 **所要時間目安**：
