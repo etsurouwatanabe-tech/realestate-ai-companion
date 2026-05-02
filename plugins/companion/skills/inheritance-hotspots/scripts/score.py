@@ -11,11 +11,24 @@ import sys
 from pathlib import Path
 from typing import Any
 
-CSV_PATH = Path(__file__).resolve().parent.parent / "data" / "tokyo23_2025.csv"
+CSV_PATH = Path(__file__).resolve().parent.parent / "data" / "tokyo23_aggregated.csv"
 
 
 def load_rows() -> list[dict[str, Any]]:
-    """CSV を読み込み、スコア降順でソートした list を返す。"""
+    """CSV を読み込み、スコア降順でソートした list を返す。CSV未生成時は prepare.py 実行を促す。"""
+    if not CSV_PATH.exists():
+        print(
+            f"❌ {CSV_PATH.name} が見つかりません。\n"
+            "\n"
+            "初回はデータ準備が必要です：\n"
+            "  1. e-Stat APIキーを取得：https://www.e-stat.go.jp/api/\n"
+            "  2. 環境変数を設定：export ESTAT_APP_ID=取得したID\n"
+            "  3. 準備スクリプト実行：python prepare.py\n"
+            "\n"
+            "使い方がわからなければ DM までどうぞ：X / note @etsuro_watanabe\n",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
     rows: list[dict[str, Any]] = []
     with CSV_PATH.open(encoding="utf-8") as f:
         for r in csv.DictReader(f):

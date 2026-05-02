@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.0.1 — 2026-05-02
+
+### 🔄 設計変更：APIキー前提へ
+
+- 同梱CSVを廃止（`data/tokyo23_2025.csv` 削除）
+- **新規**：`scripts/prepare.py` — e-Stat API + 地価公示で動的にデータ取得→集計CSV生成
+- `score.py` を改良：CSV未生成時に prepare.py 実行＋APIキー取得手順を案内
+- README/SKILL.md/scripts/README.md：APIキー取得サイトリンクとDM誘導を明示
+
+### 🚮 削除
+- `scripts/fetch_estat.py`（prepare.py に統合）
+- `scripts/fetch_landprice.py`（prepare.py に統合）
+
+### なぜ
+- 同梱データ方式は「結果の見せ直し」に寄り、Skillの本質的価値（対話で動的にカスタマイズ）が薄れるため
+- APIキー前提にすることで、年次更新・地域追加・指標追加が無理なく拡張可能に
+
+---
+
 ## v1.0.0 — 2026-05-02
 
 ### 🆕 初回リリース
