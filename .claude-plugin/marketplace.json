@@ -1,0 +1,24 @@
+{
+  "name": "realestate-ai-companion",
+  "owner": {
+    "name": "etsurouwatanabe-tech"
+  },
+  "metadata": {
+    "description": "不動産業のAI伴走者。公開API×Claudeで物件分析・業務再設計を実装するskill群"
+  },
+  "plugins": [
+    {
+      "name": "companion",
+      "source": "./plugins/companion",
+      "description": "不動産業務の伴走skill群。公開データ×AIで営業エリア戦略・市場分析を支援",
+      "version": "1.0.0",
+      "author": {
+        "name": "etsurouwatanabe-tech"
+      },
+      "repository": "https://github.com/etsurouwatanabe-tech/realestate-ai-companion",
+      "license": "MIT",
+      "category": "data",
+      "tags": ["realestate", "fudosan", "public-api", "estat", "landprice", "inheritance"]
+    }
+  ]
+}

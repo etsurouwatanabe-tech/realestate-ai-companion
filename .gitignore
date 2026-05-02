@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Data work-in-progress (生データZIP・元dbf等)
+plugins/companion/skills/*/data/raw/
+plugins/companion/skills/*/data/*.zip
+plugins/companion/skills/*/data/*.dbf
+plugins/companion/skills/*/data/*.shp
+plugins/companion/skills/*/data/*.shx
+plugins/companion/skills/*/data/*.geojson
