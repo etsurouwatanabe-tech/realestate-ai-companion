@@ -145,24 +145,46 @@ def fetch_area_codes(app_id: str) -> dict[str, str]:
     return codes
 
 
-def municipalities_for_pref(area_codes: dict[str, str], pref_code: str) -> dict[str, str]:
-    """指定都道府県内の市区町村コード→名称（都道府県全体・政令市親エンティティは除外）。
+def is_parent_municipality(code: str, name: str, area_codes: dict[str, str]) -> bool:
+    """政令市親エンティティ／合算エンティティ（『特別区部』など）の判定。
 
-    e-Stat メタ情報には『横浜市』『川崎市』『さいたま市』のような政令市の親エンティティが
-    含まれるが、配下の区（横浜市港北区→『港北区』など）が独立エントリで存在するため、
-    親はスコア重複・順位歪みを避けるため除外する。
-    判定：JIS X 0402 で都道府県内コード（下3桁）が `0` で終わるもの。
-      - 000 → 都道府県全体
-      - 100, 130, 150, 180 等 → 政令市親
-      - それ以外（101, 102, 213, 561 等） → 通常の市区町村
+    判定条件（両方を満たす）:
+      1. 自身が『区』で終わらない（区そのものは親ではない）
+      2. +1〜+19 の範囲に『区』で終わるエントリが2つ以上ある（配下に区が複数）
+
+    例:
+      - 13100『特別区部』→ +1〜+19 で千代田〜板橋区が並ぶ → 親判定 → 除外
+      - 14100『横浜市』→ +1〜+19 で鶴見区〜旭区が並ぶ → 親判定 → 除外
+      - 13110『目黒区』→ 自身が区 → 親ではない → 保持
+      - 13120『練馬区』→ 自身が区 → 親ではない → 保持
+      - 13210『小金井市』→ 自身が区でない、+1〜+19 にも区なし → 保持
     """
+    if name.endswith("区"):
+        return False
+    try:
+        base = int(code)
+    except ValueError:
+        return False
+    ku_count = 0
+    for i in range(1, 20):
+        nxt = f"{base + i:05d}"
+        nxt_name = area_codes.get(nxt, "")
+        if nxt_name.endswith("区"):
+            ku_count += 1
+            if ku_count >= 2:
+                return True
+    return False
+
+
+def municipalities_for_pref(area_codes: dict[str, str], pref_code: str) -> dict[str, str]:
+    """指定都道府県内の市区町村コード→名称（都道府県全体・政令市親・合算は除外）。"""
     out = {}
     for code, name in area_codes.items():
         if not code.startswith(pref_code) or len(code) != 5:
             continue
         if code.endswith("000"):
             continue
-        if code[-1] == "0":
+        if is_parent_municipality(code, name, area_codes):
             continue
         out[code] = name
     return out
