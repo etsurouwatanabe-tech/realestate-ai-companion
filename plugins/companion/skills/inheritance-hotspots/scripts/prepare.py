@@ -296,12 +296,35 @@ def aggregate_landprice(dbf_path: Path, target_codes: set[str]) -> dict[str, dic
 # main
 # ─────────────────────────────────────────────────────────
 
+CSV_FIELDS = [
+    "code", "prefecture", "municipality",
+    "pop_total", "pop_65plus", "aging_rate",
+    "elderly_owner_hh", "elderly_owner_rate",
+    "land_median_yen_sqm", "land_mean_yen_sqm", "n_points",
+    "score_100oku",
+]
+
+
+def load_existing_rows() -> list[dict[str, str]]:
+    """既存 aggregated.csv を読み込む（無ければ空）。フィールド構造が古い場合は破棄。"""
+    if not OUTPUT_CSV.exists():
+        return []
+    with OUTPUT_CSV.open(encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames != CSV_FIELDS:
+            print(f"⚠ 既存CSVのフォーマットが古いため破棄します: {reader.fieldnames}", file=sys.stderr)
+            return []
+        return list(reader)
+
+
 def main() -> int:
-    p = argparse.ArgumentParser(description="inheritance-hotspots: 全国対応データ準備")
+    p = argparse.ArgumentParser(description="inheritance-hotspots: 全国対応データ準備（差分追記）")
     p.add_argument("--prefecture", required=True,
                    help="都道府県コード/名称（カンマ区切り、all 可）。例: 13 / 13,14 / 東京,神奈川 / all")
     p.add_argument("--year", type=int, default=25,
                    help="地価公示の年度（西暦下2桁。例: 25 = 令和7年/2025年版）")
+    p.add_argument("--reset", action="store_true",
+                   help="既存データを破棄して指定都道府県のみで再構築（デフォルトは差分追記）")
     args = p.parse_args()
 
     app_id = require_estat_app_id()
@@ -310,6 +333,20 @@ def main() -> int:
         print("❌ 有効な都道府県が指定されていません", file=sys.stderr)
         return 1
     print(f"対象: {len(pref_codes)}都道府県 → {[PREFECTURES[c] for c in pref_codes]}", file=sys.stderr)
+
+    # 既存データ（差分追記モード）
+    existing_rows = [] if args.reset else load_existing_rows()
+    if existing_rows:
+        existing_prefs = sorted({r["prefecture"] for r in existing_rows})
+        print(f"既存データ: {len(existing_rows)}市区町村（{', '.join(existing_prefs)}）", file=sys.stderr)
+        # 新規取得対象の都道府県は既存から除外（最新化のため上書き）
+        new_pref_names = {PREFECTURES[c] for c in pref_codes}
+        kept_rows = [r for r in existing_rows if r["prefecture"] not in new_pref_names]
+        if len(kept_rows) != len(existing_rows):
+            removed = sorted(new_pref_names & {r["prefecture"] for r in existing_rows})
+            print(f"既存の{', '.join(removed)}は今回の取得で更新します", file=sys.stderr)
+    else:
+        kept_rows = []
 
     # 全国メタ情報（市区町村コード一覧）
     area_codes = fetch_area_codes(app_id)
@@ -335,11 +372,11 @@ def main() -> int:
     for munis in municipalities_all.values():
         target_codes.update(munis.keys())
     dbf_path = download_landprice_dbf(args.year)
-    print(f"[landprice] 集計中（対象 {len(target_codes)}市区町村）...", file=sys.stderr)
+    print(f"[landprice] 集計中（新規 {len(target_codes)}市区町村）...", file=sys.stderr)
     land_all = aggregate_landprice(dbf_path, target_codes)
 
-    # 統合
-    rows = []
+    # 統合（新規取得分）
+    new_rows = []
     for pref, munis in municipalities_all.items():
         pref_name = PREFECTURES[pref]
         for code, name in munis.items():
@@ -349,30 +386,40 @@ def main() -> int:
             own_rate = h["owner"] / h["total"] * 100 if h["total"] else 0
             aging = c["pop_65plus"] / c["pop_total"] * 100 if c["pop_total"] else 0
             score = h["owner"] * l["median"] / 1e8 if l["median"] else 0
-            rows.append({
+            new_rows.append({
                 "code": code,
                 "prefecture": pref_name,
                 "municipality": name,
-                "pop_total": c["pop_total"],
-                "pop_65plus": c["pop_65plus"],
-                "aging_rate": round(aging, 1),
-                "elderly_owner_hh": h["owner"],
-                "elderly_owner_rate": round(own_rate, 1),
-                "land_median_yen_sqm": l["median"],
-                "land_mean_yen_sqm": l["mean"],
-                "n_points": l["n"],
-                "score_100oku": round(score, 1),
+                "pop_total": str(c["pop_total"]),
+                "pop_65plus": str(c["pop_65plus"]),
+                "aging_rate": str(round(aging, 1)),
+                "elderly_owner_hh": str(h["owner"]),
+                "elderly_owner_rate": str(round(own_rate, 1)),
+                "land_median_yen_sqm": str(l["median"]),
+                "land_mean_yen_sqm": str(l["mean"]),
+                "n_points": str(l["n"]),
+                "score_100oku": str(round(score, 1)),
             })
+
+    # 既存（保持分）＋ 新規（取得分）を結合
+    final_rows = kept_rows + new_rows
+    final_rows.sort(key=lambda r: r["code"])
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with OUTPUT_CSV.open("w", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        w = csv.DictWriter(f, fieldnames=CSV_FIELDS)
         w.writeheader()
-        w.writerows(rows)
+        w.writerows(final_rows)
 
+    final_prefs = sorted({r["prefecture"] for r in final_rows})
     print(f"\n✅ 完了 → {OUTPUT_CSV}", file=sys.stderr)
-    print(f"   {len(rows)}市区町村のデータを集計しました。次は score.py を実行してください：", file=sys.stderr)
-    print(f"     uv run score.py --wards \"区市町村名（カンマ区切り）\"", file=sys.stderr)
+    print(f"   合計 {len(final_rows)}市区町村（{len(final_prefs)}都道府県: {', '.join(final_prefs)}）", file=sys.stderr)
+    if existing_rows and not args.reset:
+        print(f"   今回追加・更新: {len(new_rows)}市区町村", file=sys.stderr)
+    print(f"\n次のステップ：", file=sys.stderr)
+    print(f"  - スコア確認:           uv run score.py --wards \"市区町村名\"", file=sys.stderr)
+    print(f"  - 別の都道府県を追加:   uv run prepare.py --prefecture 神奈川", file=sys.stderr)
+    print(f"  - ゼロから再構築:       uv run prepare.py --prefecture 東京 --reset", file=sys.stderr)
     return 0
 
 

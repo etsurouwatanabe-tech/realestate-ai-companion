@@ -1,5 +1,32 @@
 # Changelog
 
+## v1.1.4 — 2026-05-03
+
+### ➕ prepare.py を「差分追記」仕様に変更
+
+**問題**：v1.1.3 までは `prepare.py` 実行時に `aggregated.csv` を毎回上書きしていた。
+そのため `/companion:prepare 東京 → /companion:prepare 神奈川` の順で実行すると、
+神奈川 prepare で東京データが消えていた。
+
+**修正**：
+- 既存 `aggregated.csv` を読み込み、新規取得対象都道府県以外の行を保持
+- 新規取得分とマージして書き出し
+- 同じ都道府県を再 prepare すれば最新化（差分上書き）
+- `--reset` フラグで完全初期化も可能
+
+**新しい使い方**：
+```
+/companion:prepare 東京         # 東京51件
+/companion:prepare 神奈川       # 東京51件＋神奈川52件＝103件
+/companion:prepare 千葉         # 上記＋千葉46件＝149件
+/companion:prepare 神奈川       # 神奈川分だけ最新化
+/companion:prepare 東京 --reset # 既存破棄して東京だけにする
+```
+
+完了時のメッセージで現在の総件数・都道府県一覧・「次のステップ」も案内。
+
+---
+
 ## v1.1.3 — 2026-05-03
 
 ### 📄 マークダウン出力＋レポート保存に対応
