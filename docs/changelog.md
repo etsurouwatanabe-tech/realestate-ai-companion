@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.1.3 — 2026-05-03
+
+### 📄 マークダウン出力＋レポート保存に対応
+
+- **score.py に `--format markdown` と `--output FILE` 追加**
+  - markdown はテーブル形式・サマリ・追加候補・曖昧解決ガイド・CTA すべて構造化
+  - `--output` で任意パスに保存（同時に標準出力にも出る）
+- **`/companion:inheritance` slash command を改修**
+  - score.py の出力を `data/reports/latest.md` にマークダウンで保存
+  - Read tool でレポート全文を読み込んでユーザーに提示
+  - Bash tool の出力省略（`+33 lines (ctrl+o to expand)`）を回避
+
+### 背景
+- v1.1.2 までは Bash tool 経由の score.py 標準出力が長くなると省略されていた
+- ユーザー指摘：「レポートの出力がちゃんとされない」
+- マークダウン化＋ファイル保存＋ Read 経由で全文表示を実現
+
+### 互換性
+- `--format text`（デフォルト）は v1.1.2 までと同じ挙動
+- 既存の CLI ワークフローはそのまま動く
+
+---
+
 ## v1.1.2 — 2026-05-03
 
 ### 🐛 重要な不具合修正：通常市区町村の誤除外

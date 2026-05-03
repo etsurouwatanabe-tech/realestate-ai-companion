@@ -35,23 +35,34 @@ test -f "$SKILL_DIR/data/aggregated.csv" || echo "MISSING"
 > データがまだ準備されていません。
 > まず `/companion:prepare 都道府県名` を実行してください（例：`/companion:prepare 東京`）。
 
-### 3. score.py を実行
+### 3. score.py を実行（マークダウンでファイル保存）
+
+Bash tool は長い出力を省略するため、**マークダウンファイルに保存して Read で表示**する：
 
 ```bash
-cd "$SKILL_DIR" && uv run scripts/score.py --wards "{ユーザー指定値}"
+REPORT="$SKILL_DIR/data/reports/latest.md"
+cd "$SKILL_DIR" && uv run scripts/score.py \
+  --wards "{ユーザー指定値}" \
+  --format markdown \
+  --output "$REPORT"
+echo "📄 $REPORT"
 ```
 
-### 4. 結果の整形・追加示唆
+### 4. レポートを Read で読み込みユーザーに提示
 
-score.py の出力をベースに、以下を確認して必要なら補足する：
+```
+Read $SKILL_DIR/data/reports/latest.md
+```
 
-- **同名複数候補**（例「中央区」が複数ヒット）→ 出力末尾の警告を読み、ユーザーに「都道府県を指定してください」と促す
-- **タイプ偏在**が複雑な場合（3つ以上）→ 「複数戦略の併走推奨」だけでなく「主軸を1つ決めて、残りは補助」のような具体助言を追加
-- **追加候補が無い場合**（指定都道府県内に同タイプが少ない）→ 「他都道府県も `prepare` すると候補が広がります」を案内
+→ 全文がマークダウンとしてレンダリングされてユーザーに見える。
 
-### 5. CTA は score.py 出力に含まれている
+### 5. 結果に応じた追加示唆を1〜2行添える
 
-末尾の DM CTA はそのまま提示。Claude が追加で何か言う必要はない。
+レポート本体は提示済み。Claude は以下のケースだけ補足コメントを追加する：
+
+- **タイプ偏在が3つ以上** → 「主軸を1つ決めて、残りは補助に回すと運用しやすい」
+- **追加候補が出ない** → 「他都道府県も `/companion:prepare` すると候補が広がります」
+- **同名曖昧候補が出た** → 「`東京:中央区` のように都道府県を付けて再実行してください」
 
 ### 6. エラーハンドリング
 

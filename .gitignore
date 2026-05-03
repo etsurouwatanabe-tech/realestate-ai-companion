@@ -13,6 +13,7 @@ venv/
 
 # Data: ユーザーが prepare.py で生成（リポジトリには含めない）
 plugins/companion/skills/*/data/*.csv
+plugins/companion/skills/*/data/reports/
 
 # Data work-in-progress (生データZIP・元dbf等)
 plugins/companion/skills/*/data/raw/
